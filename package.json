@@ -5,7 +5,12 @@
   "main": "index.js",
   "scripts": {
   "start": "node index.js",
-  "dev": "nodemon index.js"
+  "dev": "nodemon index.js",
+  "test": "node --test",
+  "test:db": "node scripts/verify-db.js",
+  "db:check": "node scripts/check-db.js",
+  "db:verify": "node scripts/verify-readonly.js",
+  "db:init": "node scripts/init-db.js"
 },
   "keywords": [],
   "author": "",
