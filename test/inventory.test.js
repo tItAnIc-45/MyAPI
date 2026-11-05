@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const { registerMovement } = require('../inventory/movements');
 const { validate } = require('../inventory/validation');
 const { createInventoryApp, hashPassword, publicUser } = require('../inventory/app');
-const { scryptSync } = require('node:crypto');
+const { verifyPassword } = require('../security/passwords');
+const { signToken } = require('../security/auth');
 
 function warehouse(stock = 5) {
   const state = { stock, movements: [], failInsert: false, exists: true, userExists: true };
@@ -94,8 +95,8 @@ test('Usuarios: hash con sal única, verificable y omitido en DTO', async () => 
   const first = await hashPassword(password);
   const second = await hashPassword(password);
   assert.notEqual(first, second); assert.ok(!first.includes(password));
-  const [, salt, hash] = first.split('$');
-  assert.equal(scryptSync(password, salt, 64).toString('hex'), hash);
+  assert.match(first, /^\$2b\$/);
+  assert.equal(await verifyPassword(password, first), true);
   assert.deepEqual(publicUser({ id: 1, nombre: 'Prueba', password: first }), { id: 1, nombre: 'Prueba' });
 });
 
@@ -111,12 +112,16 @@ test('API real: CRUD, alias, errores y usuario sin hash en HTTP', async (t) => {
       rows.set(row.id, row); return row;
     },
   };
-  const models = { Producto: Model, Categoria: Model, Proveedor: Model, Usuario: Model, Movimiento: Model };
-  const server = createInventoryApp(models).listen(0, '127.0.0.1');
+  const admin = { id: 9999, nombre: 'Admin de prueba', rol: 'Administrador' };
+  const users = { ...Model, async findByPk(id) { return Number(id) === admin.id ? admin : Model.findByPk(id); } };
+  const models = { Producto: Model, Categoria: Model, Proveedor: Model, Usuario: users, Movimiento: Model };
+  const config = { jwtSecret: 'secreto-ficticio-aislado-solo-para-tests-123456789', jwtExpiresIn: '1h' };
+  const token = signToken(admin, config);
+  const server = createInventoryApp(models, config).listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
   t.after(() => new Promise(resolve => server.close(resolve)));
   const request = (path, method = 'GET', body) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-    method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   assert.equal((await request('/')).status, 200);
   for (const resource of ['productos', 'categorias', 'proveedores', 'usuarios']) {
@@ -132,7 +137,7 @@ test('API real: CRUD, alias, errores y usuario sin hash en HTTP', async (t) => {
   assert.equal((await request('/api/categorias/1', 'DELETE')).status, 204);
   const user = await request('/api/usuarios', 'POST', { nombre: 'Operador', email: 'operator@example.com', password: 'solo-prueba-segura' });
   assert.equal(user.status, 201); assert.equal((await user.json()).password, undefined);
-  assert.match(savedPassword, /^scrypt\$/);
+  assert.match(savedPassword, /^\$2b\$/);
   assert.equal((await (await request('/api/usuarios')).json())[0].password, undefined);
   assert.equal((await request('/api/movimientos/1', 'PUT', {})).status, 405);
   assert.equal((await request('/api/movimientos/1', 'DELETE')).status, 405);

@@ -43,7 +43,7 @@ erDiagram
         int id PK
         varchar nombre
         varchar email UK
-        varchar password "hash scrypt"
+        varchar password "hash bcrypt o scrypt legado"
         enum rol "Operador o Administrador"
         datetime createdAt
         datetime updatedAt

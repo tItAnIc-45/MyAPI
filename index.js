@@ -1,5 +1,4 @@
 const sequelize = require('./config/db');
-require('dotenv').config();
 
 const models = require('./models');
 const { createInventoryApp } = require('./inventory/app');

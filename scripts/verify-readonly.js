@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { QueryTypes } = require('sequelize');
 const models = require('../models');
 const { createInventoryApp } = require('../inventory/app');
+const { securityConfig, signToken } = require('../security/auth');
 
 async function main() {
   let server;
@@ -34,9 +35,16 @@ async function main() {
     server = createInventoryApp(models).listen(0, '127.0.0.1');
     await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
     const base = `http://127.0.0.1:${server.address().port}`;
+    const user = await models.Usuario.findOne({ where: { rol: 'Administrador' } }) || await models.Usuario.findOne();
+    const token = user ? signToken(user, securityConfig()) : null;
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
     for (const resource of ['productos', 'categorias', 'proveedores', 'usuarios', 'movimientos', 'dashboard']) {
-      const response = await fetch(`${base}/api/${resource}`);
-      assert.equal(response.status, 200, resource);
+      assert.equal((await fetch(`${base}/api/${resource}`)).status, 401);
+      if (!user) continue;
+      const response = await fetch(`${base}/api/${resource}`, { headers });
+      const expected = resource === 'usuarios' && user.rol !== 'Administrador' ? 403 : 200;
+      assert.equal(response.status, expected, resource);
+      if (expected === 403) { console.log('GET /api/usuarios: 403 para operador, correcto.'); continue; }
       const json = await response.json();
       if (resource === 'dashboard') {
         assert.equal(json.productos, counts.Producto);
@@ -44,12 +52,13 @@ async function main() {
         assert.equal(json.proveedores, counts.Proveedor);
         assert.equal(json.usuarios, counts.Usuario);
         assert.equal(json.movimientos, counts.Movimiento);
-        console.log('Dashboard real:', JSON.stringify(json));
+        console.log('Dashboard real: conteos coherentes con MariaDB.');
       } else assert.ok(Array.isArray(json));
       console.log(`GET /api/${resource}: 200`);
     }
     assert.equal((await fetch(`${base}/`)).status, 200);
-    assert.equal((await fetch(`${base}/productos`)).status, 200);
+    assert.equal((await fetch(`${base}/productos`)).status, 401);
+    if (user) assert.equal((await fetch(`${base}/productos`, { headers })).status, 200);
     console.log('Lecturas HTTP correctas. No se insertaron, actualizaron ni borraron filas.');
   } catch (error) {
     console.error('Verificación fallida:', error.original?.code || error.name, error.original ? '' : error.message);

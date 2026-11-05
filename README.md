@@ -1,5 +1,13 @@
 # MyAPI — preparación del CRUD de productos
 
+**Laboratorios 10 y 11 implementados localmente:** [seguridad, sesión React, ejecución y capturas](docs/LABORATORIOS10-11.md)
+y [Postman actualizado](docs/POSTMAN-10-11.md). Instalar con `npm.cmd ci`, preparar
+variables JWT con `npm.cmd run auth:configure` e iniciar con `npm.cmd run dev`.
+Todas las rutas administrativas requieren Bearer. APIDB existente no se reinicializa.
+Para la primera cuenta administradora: `npm.cmd run admin:bootstrap` en terminal
+interactiva; no promueve cuentas anteriores. `npm.cmd test` no escribe en MySQL.
+La documentación del Laboratorio 9 que sigue se conserva como referencia histórica.
+
 **Laboratorio 9 implementado:** consultar [guía actual de ejecución, API y evidencias](docs/LABORATORIO9.md),
 [DER](docs/DER.md) y [Postman](docs/POSTMAN.md). El servidor utiliza
 `inventory/app.js` y los cinco modelos de `models/index.js`. Las secciones

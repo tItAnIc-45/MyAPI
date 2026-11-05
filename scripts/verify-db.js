@@ -5,6 +5,7 @@ const { QueryTypes } = require('sequelize');
 const models = require('../models');
 const { hashPassword, createInventoryApp } = require('../inventory/app');
 const { registerMovement } = require('../inventory/movements');
+const { securityConfig, signToken } = require('../security/auth');
 async function main() {
   let outer;
   let server;
@@ -32,7 +33,7 @@ async function main() {
     const listedUser = await models.Usuario.findByPk(usuario.id, options);
     assert.equal(listedUser.toJSON().password, undefined);
     const protectedUser = await models.Usuario.unscoped().findByPk(usuario.id, options);
-    assert.match(protectedUser.password, /^scrypt\$/);
+    assert.match(protectedUser.password, /^\$2b\$/);
     // Los movimientos usan savepoints dentro de la transacción exterior.
     const scoped = { ...models, sequelize: { transaction: cb => models.sequelize.transaction({ transaction: outer }, cb) } };
     const payload = { productoId: producto.id, usuarioId: usuario.id, tipo_movimiento: 'Entrada', cantidad: 10 };
@@ -52,13 +53,16 @@ async function main() {
     server = createInventoryApp(models).listen(0, '127.0.0.1');
     await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
     const base = `http://127.0.0.1:${server.address().port}/api`;
+    const viewer = await models.Usuario.findOne({ where: { rol: 'Administrador' } }) || await models.Usuario.findOne();
+    const token = viewer ? signToken(viewer, securityConfig()) : null;
     for (const route of ['productos', 'categorias', 'proveedores', 'usuarios', 'movimientos', 'dashboard']) {
-      const response = await fetch(`${base}/${route}`);
-      assert.equal(response.status, 200, route);
+      const response = await fetch(`${base}/${route}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const expected = !viewer ? 401 : route === 'usuarios' && viewer.rol !== 'Administrador' ? 403 : 200;
+      assert.equal(response.status, expected, route);
       const json = await response.json();
-      if (route === 'dashboard') assert.equal(json.productos, after[3]);
+      if (route === 'dashboard' && expected === 200) assert.equal(json.productos, after[3]);
     }
-    console.log('HTTP con MariaDB: seis endpoints de lectura y Dashboard respondieron 200.');
+    console.log('HTTP con MariaDB: rutas de lectura y permisos comprobados.');
   } catch (error) {
     console.error('Prueba MariaDB fallida:', error.original?.code || error.name, error.original ? '' : error.message);
     process.exitCode = 1;

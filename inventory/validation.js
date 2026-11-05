@@ -23,7 +23,7 @@ function email(value) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result)) fail('Email inválido.');
   return result;
 }
-function validate(resource, body, updating = false) {
+function validate(resource, body, updating = false, allowAdmin = false) {
   const b = object(body);
   if (resource === 'productos') {
     const precio = number(b.precio, 'Precio', { max: 99999999.99, integer: false });
@@ -37,12 +37,13 @@ function validate(resource, body, updating = false) {
     telefono: text(b.telefono, 'Teléfono', 40, false), email: email(b.email) };
   if (resource === 'usuarios') {
     const datos = { nombre: text(b.nombre, 'Nombre'), email: email(b.email), rol: b.rol || 'Operador' };
-    // En este laboratorio, la gestión sin autenticación solo permite operadores.
-    if (datos.rol !== 'Operador') fail('En Laboratorio 9 solo se crean y editan operadores. Administradores se habilitan en Laboratorio 10.');
-    if (!updating || b.password) datos.password = text(b.password, 'Contraseña', 128);
-    if (datos.password && datos.password.length < 8) fail('La contraseña requiere al menos 8 caracteres.');
+    if (!['Operador', 'Administrador'].includes(datos.rol) || (!allowAdmin && datos.rol !== 'Operador')) fail('Rol no permitido.');
+    if (!updating || b.password) {
+      if (typeof b.password !== 'string' || b.password.length < 8 || Buffer.byteLength(b.password, 'utf8') > 72) fail('La contraseña requiere al menos 8 caracteres y máximo 72 bytes UTF-8.');
+      datos.password = b.password;
+    }
     return datos;
   }
   fail('Recurso inválido.');
 }
-module.exports = { HttpError, fail, object, text, number, id, validate };
+module.exports = { HttpError, fail, object, text, number, id, email, validate };
